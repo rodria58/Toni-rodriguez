@@ -1,0 +1,206 @@
+#Packages--------
+library(readr)
+library(caret)
+library(AppliedPredictiveModeling)
+library(plyr)
+library(C50)
+library(e1071)
+library(rpart.plot)
+#Practice Iris from Help-----
+str(iris)
+transparentTheme(trans=.4)
+featurePlot(x=iris[,1:4], y=iris$Species,plot="pairs",auto.key=list(columns=3))
+
+#Data Understanding & Preparation----
+str(CompleteResponses)
+isnames(CompleteResponses)
+hist(CompleteResponses$salary)
+hist(CompleteResponses$age)
+hist(CompleteResponses$elevel)
+hist(CompleteResponses$car)
+hist(CompleteResponses$zipcode)
+hist(CompleteResponses$credit)
+hist(CompleteResponses$brand)
+summary(CompleteResponses)
+view(CompleteResponses)
+CompleteResponses$brand<-as.factor(CompleteResponses$brand)
+summary(CompleteResponses)
+str(CompleteResponses)
+CompleteResponses$zipcode<-as.numeric(CompleteResponses$zip)
+str(CompleteResponses)
+#Data understanding & Preparation Scatter all----
+transparentTheme(trans = .4)
+
+featurePlot(x = CompleteResponses[, 1:6], 
+            y = CompleteResponses$brand, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 6))
+
+#Data Understanding & Preparation Scatter Sal&Age----
+transparentTheme(trans = .4)
+
+featurePlot(x = CompleteResponses[, 1:2], 
+            y = CompleteResponses$brand, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 2))
+
+#Data Understanding & Perparation Scatter w Ellips----
+
+transparentTheme(trans = .4)
+
+featurePlot(x = CompleteResponses[, 1:2], 
+            y = CompleteResponses$brand, 
+            plot = "ellipse",
+            ## Add a key at the top
+            auto.key = list(columns = 2))
+
+
+
+#Change variable type----
+
+
+CompleteResponses$elevel<-factor(CompleteResponses$elevel,
+                                 levels = c(0,1,2,3,4),
+                                 labels = c(0,1,2,3,4))
+
+CompleteResponses$car<-factor(CompleteResponses$car, 
+                                 levels = c(1:20), 
+                                 labels = c(1:20))
+
+CompleteResponses$zipcode<-factor(CompleteResponses$zipcode,
+                                  levels = c(0:8),
+                                  labels = c(0:8))
+
+CompleteResponses$brand<-factor(CompleteResponses$brand, 
+                                levels = c(0,1), 
+                                labels = c("Acer","Sony"))
+
+#And now the Incomplete Survey
+
+SurveyIncomplete$elevel<-factor(SurveyIncomplete$elevel,
+                                 levels = c(0,1,2,3,4),
+                                 labels = c(0,1,2,3,4))
+
+SurveyIncomplete$car<-factor(SurveyIncomplete$car, 
+                              levels = c(1:20), 
+                              labels = c(1:20))
+
+SurveyIncomplete$zipcode<-factor(SurveyIncomplete$zipcode,
+                                  levels = c(0:8),
+                                  labels = c(0:8))
+
+SurveyIncomplete$brand<-factor(SurveyIncomplete$brand, 
+                                levels = c(0,1), 
+                                labels = c("Acer","Sony"))
+
+
+#Create_data_Partition----
+
+set.seed(123)
+trainsetpart<-createDataPartition(CompleteResponses$brand,p=.75,list=FALSE)
+trainset<-CompleteResponses[trainsetpart,]
+testset<-CompleteResponses[-trainsetpart,]
+head(trainset)
+head(testset)
+
+
+#Create 10 folds----
+fitcontol<-trainControl(method = "repeatedcv",number = 10, repeats = 1)
+head(fitcontol)
+
+#Train the model----
+
+model1<-train(brand~.,data = trainset, method = "C5.0", trControl = fitcontol, tuneLenght = 2)
+
+varImp(model1)
+
+model1
+
+model2<-train(brand~.,data = trainset, method = "rf", trControl = fitcontol, tuneLenght = 2)
+
+model2
+
+varImp(model2)
+
+
+
+#Predict----
+
+
+brandprediction1<-predict(model2, newdata = SurveyIncomplete[-7])
+
+write.table(brandprediction1,file = "BrandPrediction.csv")
+
+postResample(brandprediction1,SurveyIncomplete$salary)
+
+
+#Predicted_Plots----
+
+#Bars
+
+ggplot(CompleteResponses, aes(x=CompleteResponses$brand, 
+                              fill=CompleteResponses$brand)) + geom_bar(color="white")
+
+ggplot(Predicted_S_2, aes(x=Predicted_S_2$PredictedBrand, 
+                          fill=Predicted_S_2$PredictedBrand)) + geom_bar(color="white")
+#Histograms Salary
+
+ggplot(Predicted_S_2, aes(x=Predicted_S_2$salary, 
+                          fill=Predicted_S_2$salary))+geom_histogram(color="white", bins=20)
+
+ggplot(CompleteResponses, aes(x=salary, fill=salary))+geom_histogram(color="white", bins=20)
+
+#Histogram Age
+
+ggplot(Predicted_S_2, aes(x=Predicted_S_2$age, 
+                          fill=Predicted_S_2$age))+geom_histogram(color="white", bins=20)
+
+ggplot(CompleteResponses, aes(x=CompleteResponses$age, 
+                          fill=CompleteResponses$age))+geom_histogram(color="white", bins=20)
+
+
+#DotCloud
+
+ggplot(Predicted_S_2, aes(x=Predicted_S_2$salary, y=age, 
+                          col=Predicted_S_2$PredictedBrand))+geom_point()+geom_smooth()
+
+ggplot(CompleteResponses, aes(x=CompleteResponses$salary, y=age, 
+                          col=CompleteResponses$brand))+geom_point()+geom_smooth()
+
+#Nuvol de punts
+
+transparentTheme(trans = .4)
+
+featurePlot(x = Predicted_S_2[, 1:2], 
+            y = Predicted_S_2$PredictedBrand, 
+            plot = "ellipse",
+            ## Add a key at the top
+            auto.key = list(columns = 2))
+
+
+
+
+#GGplot_Workshop----
+library(ggplot2)
+
+
+#Un Histograma de salary a la X linia del borde negre, color blau i 20 bins.
+ggplot(CompleteResponses, aes(x=salary)) + geom_histogram(color="red", fill="blue", bins=20)
+#Grafic de columnes amb linia blanca i barres verdes.
+ggplot(CompleteResponses, aes(x=brand)) + geom_bar(color="white", fill="green")
+#Colors de les barres depenent del valor de brand_Picture_3
+ggplot(CompleteResponses, aes(x=brand, fill=brand)) + geom_bar(color="black")
+#4 Histograms, one per each elevel_Picture4
+ggplot(CompleteResponses, aes(x=salary)) + geom_histogram(color="white", fill="blue", bins=20) + facet_grid(CompleteResponses$elevel)
+#Columnes apilades Picture5
+ggplot(CompleteResponses, aes(x=salary, fill=brand))+geom_histogram(color="white", bins=20)
+
+#Nuvol de punts amb linies. Picture6
+ggplot(CompleteResponses, aes(x=salary, y=age, col=brand))+geom_point()+geom_smooth()
+
+#Boxplot amb salary&brand
+
+ggplot(CompleteResponses, aes(x=brand, y=salary, fill=brand))+ geom_boxplot()+stat_summary(fun.y = median, aes(label=round..y.., digits=2))
+
