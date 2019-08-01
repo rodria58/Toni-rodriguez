@@ -1,0 +1,350 @@
+#Packages----
+library(readr)
+library(caret)
+library(AppliedPredictiveModeling)
+library(plyr)
+library(C50)
+library(e1071)
+library(rpart.plot)
+library(ggplot2)
+library(outliers)
+library(dplyr)
+library(corrplot)
+library(kernlab)
+library(reshape)
+#Start Data preparation----
+str()
+unique()
+summary()
+
+
+#Plots----
+
+#To plot data
+ggplot(existingproductattributes2017, aes(x=existingproductattributes2017$ProductType, 
+                              fill=existingproductattributes2017$ProductNum)) + geom_bar(color="white")
+
+
+ggplot(existingproductattributes2017, aes(x=existingproductattributes2017$Volume)) + geom_histogram(color="darkblue", fill="lightblue", bins=20)
+
+
+#boxplot_Price all vbles
+ggplot(existingproductattributes2017, aes(x=existingproductattributes2017$ProductType, y=existingproductattributes2017$Price
+                                        )) + geom_boxplot()
+
+
+ggplot(existingproductattributes2017, aes(x=existingproductattributes2017$ProductType, y=existingproductattributes2017$Volume
+)) + geom_boxplot()
+
+#SCatter_Mess
+transparentTheme(trans=.4)
+featurePlot(x=existingproductattributes2017[,4:8], 
+            y=existingproductattributes2017$ProductType,plot="pairs",auto.key=list(columns=8))
+
+#♠Scatter_Stars_Volume
+transparentTheme(trans=.4)
+featurePlot(x=existingproductattributes2017[c(4:8,18)], 
+            y=existingproductattributes2017$ProductType,plot="pairs",auto.key=list(columns=6))
+
+
+#♠Scatter_ServRev_Volume
+transparentTheme(trans=.4)
+featurePlot(x=existingproductattributes2017[c(9:10,18)], 
+            y=existingproductattributes2017$ProductType,plot="pairs",auto.key=list(columns=3))
+
+#Scatter_Dimens_Volume
+transparentTheme(trans=.4)
+featurePlot(x=existingproductattributes2017[c(13:16,18)], 
+            y=existingproductattributes2017$ProductType,plot="pairs",auto.key=list(columns=3))
+
+#To know how many NAs do we have
+
+sum(is.na(existingproductattributes2017$BestSellersRank))
+
+#All varType to numeric/ Apply is not working----
+#We need to store the output of the apply function.
+
+#apply(existingproductattributes2017[,-1],2,as.numeric)
+
+existingproductattributes2017$x5StarReviews<-as.numeric(existingproductattributes2017$x5StarReviews)
+existingproductattributes2017$x4StarReviews<-as.numeric(existingproductattributes2017$x4StarReviews)
+existingproductattributes2017$x3StarReviews<-as.numeric(existingproductattributes2017$x3StarReviews)
+existingproductattributes2017$x2StarReviews<-as.numeric(existingproductattributes2017$x2StarReviews)
+existingproductattributes2017$x1StarReviews<-as.numeric(existingproductattributes2017$x1StarReviews)
+existingproductattributes2017$Volume<-as.numeric(existingproductattributes2017$Volume)
+existingproductattributes2017$PositiveServiceReview<-as.numeric(existingproductattributes2017$PositiveServiceReview)
+existingproductattributes2017$NegativeServiceReview<-as.numeric(existingproductattributes2017$NegativeServiceReview)
+existingproductattributes2017$ProductNum<-as.numeric(existingproductattributes2017$ProductNum)
+
+#To work without extended Warranties, Best Sellers, ProdNum & 5X.-----
+
+NewDSet<-existingproductattributes2017[-(32:41),]
+NewDSet<-NewDSet[,-c(2,4,12,17)]
+
+#to replace outlier in Volume (find in plots) by a high sido on the 4th quartile.----
+
+outlier(NewDSet$Volume)
+
+summary(NewDSet)
+
+bench <-quantile(NewDSet$Volume,probs = .75)+1.5*IQR(NewDSet$Volume)
+
+ for (i in 1:length(NewDSet$Volume)){
+   if (NewDSet[i,14]>bench){
+     NewDSet[i,14]<-bench
+   }
+ }
+
+summary(NewDSet)
+
+#To plot the boxplot again and check results.
+
+ggplot(NewDSet, aes(x=NewDSet$ProductType, y=NewDSet$Volume
+)) + geom_boxplot()
+
+
+#For the factor to forget the levels, we move it to Ch and Factorize later on.----
+
+NewDSet$ProductType<-as.character(NewDSet$ProductType)
+NewDSet$ProductType<-as.factor(NewDSet$ProductType)
+
+#Dummify Variables----
+
+#This is without ExtWarr, Best Sellers & Margin
+
+NewDSetDummy<-dummyVars("~.", data = NewDSet)
+
+#This is with all
+
+
+# OrigSetDummy<-dummyVars("~.", data = existingproductattributes2017)
+
+PrediNewDSetDummy<-data.frame(predict(NewDSetDummy,NewDSet))
+
+#PrediOrigSetDummy<-data.frame(predict(OrigSetDummy,existingproductattributes2017))
+
+#Remove x2 because of correlation
+
+PrediNewDSetDummy<-PrediNewDSetDummy[,-c(15)]
+
+#Remove 3 & 1 stars
+
+PrediNewDSetDummy<-PrediNewDSetDummy[,-c(14,15)]
+
+str(PrediNewDSetDummy)
+
+#Correlation Matrix
+
+corrData1 <- cor(PrediNewDSetDummy)
+
+#corrData2 <- cor(PrediOrigSetDummy)
+
+write.table(corrData1,"corrData1.csv")
+#write.table(corrData2,"corrData1.csv")
+
+corrplot(corrData1)
+
+
+#Define a 75%/25% train/test split of the dataset----
+
+Data<-PrediNewDSetDummy
+
+set.seed(123)
+inTraining <- createDataPartition(Data$Volume, p = .75, list = FALSE)
+training <- Data[inTraining,]
+testing <- Data[-inTraining,]
+
+fitControl <- trainControl(method = "cv", number=2, verboseIter = T)
+
+#Testing models with loop----
+
+combined <- c()
+
+models <- c("lm", "knn", "rf", "svmRadial", "svmLi
+            near")
+
+for(i in models) {
+  
+  Fit <- train(Volume~.,
+               data= training,
+               method = i, 
+               trControl = fitControl,
+               tuneLength = 8, 
+               preProcess = c("center","scale"),
+               na.action = na.omit
+  )
+  
+  pred <- predict(Fit,testing)
+  
+  res <- postResample(pred,testing$Volume)
+  
+  combined <- cbind(combined, res) 
+  
+}
+colnames(combined) <- models
+
+combined
+
+#Melt function to store the errors
+
+compare_model_melt <- melt(combined, varnames = c("metric", "model"))
+compare_model_melt <- as_data_frame(compare_model_melt)
+compare_model_melt
+
+#Plot errors with ggplot----
+
+ggplot(compare_model_melt, aes(x=model, y=value, fill=model))+
+  geom_col()+
+  facet_grid(metric~., scales="free")
+
+str(compare_model_melt)
+
+
+warnings()1
+
+#Run model RF----
+#___1.
+Fit_RF <- train(Volume~.,
+              data= training,
+              method = "rf", 
+              trControl = fitControl,
+              tuneLength = 4, 
+              preProcess = c("center","scale"),
+              na.action = na.omit
+)
+pred_RF <- predict(Fit_RF,testing)
+
+testing$predictvolume_RF<-pred_RF 
+testing$error_RF <- testing$Volume - testing$predictvolume_RF
+testing$error_abs_RF <- abs(testing$Volume - testing$predictvolume_RF)
+
+
+ggplot(testing, aes(x=Volume, y=error_abs_RF, col=Volume)) + 
+  geom_point() +
+  geom_smooth() 
+
+
+
+#Run model kNN----
+Fit_KNN <- train(Volume~.,
+                data= training,
+                method = "knn", 
+                trControl = fitControl,
+                tuneLength = 5, 
+                preProcess = c("center","scale"),
+                na.action = na.omit
+)
+pred_knn <- predict(Fit_KNN,testing)
+
+testing$predictvolume_knn<-pred_knn 
+testing$error_knn <- testing$Volume - testing$predictvolume_knn
+testing$error_abs_knn <- abs(testing$Volume - testing$predictvolume_knn)
+
+ggplot(testing, aes(x=Volume, y=error_abs_knn, col=Volume)) + 
+  geom_point() +
+  geom_smooth() 
+
+
+#Run model SVMRadial-----
+
+Fit_SVMR <- train(Volume~.,
+                 data= training,
+                 method = "svmRadial", 
+                 trControl = fitControl,
+                 tuneLength = 5, 
+                 preProcess = c("center","scale"),
+                 na.action = na.omit
+)
+pred_SVMR <- predict(Fit_SVMR,testing)
+
+testing$predictvolume_SVMR<-pred_SVMR 
+testing$error_SVMR <- testing$Volume - testing$predictvolume_SVMR
+testing$error_abs_SVMR <- abs(testing$Volume - testing$predictvolume_SVMR)
+
+ggplot(testing, aes(x=Volume, y=error_abs_SVMR, col=Volume)) + 
+  geom_point() +
+  geom_smooth() 
+
+#Plot for relative Err----
+
+testing$Relat_RF<-testing$error_abs_RF/testing$Volume
+
+ggplot(testing, aes(x=Volume, y=Relat_RF, col=Volume)) + 
+  geom_point() +
+  geom_smooth() 
+
+
+testing$Relat_knn<-testing$error_abs_knn/testing$Volume
+
+ggplot(testing, aes(x=Volume, y=Relat_knn, col=Volume)) + 
+  geom_point() +
+  geom_smooth()
+
+
+testing$Relat_svmr<-testing$error_abs_SVMR/testing$Volume
+
+ggplot(testing, aes(x=Volume, y=Relat_svmr, col=Volume)) + 
+  geom_point() +
+  geom_smooth()
+
+#PreProces of Newproducts-----
+
+Newproducts<-newproductattributes2017
+
+
+# 1. convert Newproducts as numeric
+
+Newproducts$x5StarReviews<-as.numeric(Newproducts$x5StarReviews)
+Newproducts$x4StarReviews<-as.numeric(Newproducts$x4StarReviews)
+Newproducts$x3StarReviews<-as.numeric(Newproducts$x3StarReviews)
+Newproducts$x2StarReviews<-as.numeric(Newproducts$x2StarReviews)
+Newproducts$x1StarReviews<-as.numeric(Newproducts$x1StarReviews)
+Newproducts$Volume<-as.numeric(Newproducts$Volume)
+Newproducts$PositiveServiceReview<-as.numeric(Newproducts$PositiveServiceReview)
+Newproducts$NegativeServiceReview<-as.numeric(Newproducts$NegativeServiceReview)
+Newproducts$ProductNum<-as.numeric(Newproducts$ProductNum)
+str(Newproducts)
+
+#NewProducts PreProces Remove extended Warranties, Best Sellers, ProdNum & 5X----
+
+
+Newproducts<-Newproducts[-(23),]
+Newproducts<-Newproducts[,-c(2,4,12,17)]
+str(Newproducts)
+
+#For the factor to forget the levels, we move it to Ch and Factorize later on----
+
+Newproducts$ProductType<-as.character(Newproducts$ProductType)
+Newproducts$ProductType<-as.factor(Newproducts$ProductType)
+
+#Dummyfing----
+
+NewproductsDummy<-dummyVars("~.", data = Newproducts)
+Newproducts<-data.frame(predict(NewproductsDummy,Newproducts))
+
+#x2 Removed because of correlation in existing products----
+
+Newproducts<-Newproducts[,-c(15)]
+
+#3 & 1 stars Removed because of correlation in existing products----
+
+Newproducts<-Newproducts[,-c(14,15)]
+
+str(Newproducts)
+
+
+#Prediction of volume for the new products----
+
+Predictions<-predict(Fit_RF,Newproducts)
+
+Predictions
+
+summary(Predictions)
+
+Newproducts$PredVolume<-Predictions
+
+write.table(Newproducts,"Predicted_Volume.csv")
+
+
+
+
